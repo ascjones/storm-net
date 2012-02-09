@@ -26,7 +26,7 @@ namespace StormNet.Tests
 
                     Assert.That(json["command"], Is.EqualTo("emit"), "The command name should be 'emit'");
                     Assert.That(json["anchors"], Is.EqualTo("[]"), "No anchors were specified, the list should be empty");
-                    Assert.That(json.Get<object[]>("tuple"), Is.EquivalentTo(new object[] { "x" }));
+                    Assert.That(json.Get<string[]>("tuple"), Is.EquivalentTo(new [] { "x" }));
                 }
             }
         }

@@ -1,13 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using ServiceStack.Text;
 
 namespace StormNet
 {
-    public class Protocol
+    static class Protocol
     {
-        private static string ReadStringMessage()
+        internal static string ReadStringMessage()
         {
             string msg = String.Empty;
             while (true)
@@ -21,10 +24,46 @@ namespace StormNet
             return msg.TrimEnd('\n');
         }
 
-        private static JsonObject ReadMessage()
+        static JsonObject ReadMessage()
         {
             string message = ReadStringMessage();
             return JsonObject.Parse(message);
+        }
+
+        internal static StormTuple ReadTuple()
+        {
+            var json = ReadMessage();
+
+            return new StormTuple
+            {
+                Id = json.JsonTo<long>("id"),
+                Component = json.JsonTo<string>("comp"),
+                Stream = json.JsonTo<string>("stream"),
+                Task = json.JsonTo<string>("task"),
+                Tuple = json.Get<string[]>("tuple")
+            };
+        }
+
+        internal static void SendProcessId(string heartbeatDir)
+        {
+            int pid = Process.GetCurrentProcess().Id;
+            var pidFile = Path.Combine(heartbeatDir, pid.ToString(CultureInfo.InvariantCulture));
+            File.Create(pidFile);
+            Console.WriteLine(pid);
+        }
+
+        internal static StormEnvironment GetEnvironment()
+        {
+            return new StormEnvironment
+            {
+                Config = ReadStringMessage(),
+                Context = ReadStringMessage()
+            };
+        }
+
+        private static void SendMessageToParent(object json)
+        {
+            SendToParent(json.ToJson());
         }
 
         private static void SendToParent(string s)
@@ -32,11 +71,6 @@ namespace StormNet
             Console.Out.WriteLine(s);
             Console.Out.WriteLine("end");
             Console.Out.Flush();
-        }
-
-        private static void SendMessageToParent(object json)
-        {
-            SendToParent(json.ToJson());
         }
 
         private static void EmitTuple(object[] tuple, int? streamId = null, IEnumerable<StormTuple> anchors = null, long? direct = null)
@@ -56,10 +90,47 @@ namespace StormNet
             SendMessageToParent(message);
         }
 
-        public static JsonObject Emit(object[] tuple, int? streamId = null, IEnumerable<StormTuple> anchors = null)
+        internal static JsonObject Emit(object[] tuple, int? streamId = null, IEnumerable<StormTuple> anchors = null)
         {
             EmitTuple(tuple, streamId, anchors);
             return ReadMessage();
+        }
+
+        internal static void EmitDirect(int taskId, object[] tuple, int? streamId = null, IEnumerable<StormTuple> anchors = null)
+        {
+            EmitTuple(tuple, streamId, anchors, taskId);
+        }
+
+        internal static void Ack(StormTuple tuple)
+        {
+            SendMessageToParent(new Dictionary<string, object>
+            {
+                {"command", "ack"},
+                {"id", tuple.Id}
+            });
+        }
+
+        internal static void Fail(StormTuple tuple)
+        {
+            SendMessageToParent(new Dictionary<string, object>
+            {
+                {"command", "fail"},
+                {"id", tuple.Id}
+            });
+        }
+
+        internal static void Log(string message)
+        {
+            SendMessageToParent(new Dictionary<string, string>
+            {
+                { "command", "log" },
+                { "msg", message }
+            });
+        }
+
+        internal static void Sync()
+        {
+            Console.WriteLine("sync");
         }
     }
 }
